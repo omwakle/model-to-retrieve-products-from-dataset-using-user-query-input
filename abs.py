@@ -3,129 +3,127 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import re
-from sentence_transformers import SentenceTransformer
-import os
+from nltk.corpus import stopwords
+import google.generativeai as genai
+import json
+import nltk
 
-# Load dataset directly from the provided CSV
-csv_path = 'beauty-services-data (1).csv'
+# Download NLTK stopwords
+nltk.download('stopwords')
 
-# Check if the file exists
-if not os.path.exists(csv_path):
-    raise FileNotFoundError(f"{csv_path} not found. Ensure the file is in the same directory as the script.")
+# Configure Google Generative AI API
+genai.configure(api_key='your-gemini-api-key')
 
-# Load the CSV
-df = pd.read_csv(csv_path)
+# Load CSV
+df = pd.read_csv('products.csv')
 
-# Debug: Check loaded DataFrame
-print("DataFrame after loading CSV:")
-print(df.head())
-print("Columns before fixing:", df.columns.tolist())
-
-# Fix column names by stripping whitespace
-df.columns = [col.strip() for col in df.columns]
-
-# Debug: Check columns after fixing
-print("Columns after fixing:", df.columns.tolist())
-
-# Verify required columns exist
-required_columns = ['service', 'vendor', 'rating']
-for col in required_columns:
-    if col not in df.columns:
-        raise KeyError(f"Column '{col}' not found in DataFrame. Available columns: {df.columns.tolist()}")
-
-# Combine service and vendor for a full description
-df['description'] = df['service'] + df['vendor']
-
-# ---- NLP Preprocessing ----
+# Preprocessing function
 def preprocess_text(text):
     text = text.lower()
-    text = re.sub(r'[^\w\s]', '', text)  # Remove punctuation
+    text = re.sub(r'\W+', ' ', text)
+    stop_words = set(stopwords.words('english'))
+    text = ' '.join([word for word in text.split() if word not in stop_words])
     return text
 
-# Preprocess descriptions
-df['description_processed'] = df['description'].apply(preprocess_text)
+# Initial combined text
+df['combined_text'] = (df['name'] + ' ' + df['name'] + ' ' + df['name'] + ' ' +
+                       df['category'] + ' ' + df['category'] + ' ' +
+                       df['description'] + ' ' +
+                       df['features'])
+df['combined_text'] = df['combined_text'].apply(preprocess_text)
 
-# ---- TF-IDF Vectorization ----
-vectorizer = TfidfVectorizer()
-tfidf_matrix = vectorizer.fit_transform(df['description_processed'])
+# Gemini query optimization
+def optimize_query_with_gemini(query):
+    try:
+        model = genai.GenerativeModel('gemini-1.5-pro')
+        prompt = f"""
+        Process this user query for a product search system:
+        - Correct any spelling errors.
+        - Extract key product-related keywords (e.g., product type, features).
+        - Detect the user's intent (specific product, category, or general suggestion).
+        - Suggest synonyms for key terms to broaden the search.
+        - Return the result as a JSON object with:
+          - 'corrected_query': space-separated keywords
+          - 'intent': 'specific', 'category', or 'general'
+          - 'synonyms': list of synonym lists for each key term
+        Query: '{query}'
+        """
+        response = model.generate_content(prompt)
+        raw_response = response.text.strip()
+        print(f"Raw Gemini response: {raw_response}")
 
-# ---- Sentence Embeddings ----
-model = SentenceTransformer('all-MiniLM-L6-v2')  # Lightweight pre-trained model
-description_embeddings = model.encode(df['description_processed'].tolist(), convert_to_tensor=False)
+        # Extract JSON content between first '{' and last '}'
+        start_idx = raw_response.find('{')
+        end_idx = raw_response.rfind('}') + 1
+        if start_idx == -1 or end_idx == 0:
+            raise ValueError("No valid JSON found in response")
+        json_str = raw_response[start_idx:end_idx]
 
-# ---- Recommendation Function ----
-def recommend_services(query, top_n=2, method='tfidf'):
-    """
-    Recommend services based on user query.
-    Args:
-        query (str): User's search query (e.g., "haircut")
-        top_n (int): Number of recommendations
-        method (str): 'tfidf' or 'embeddings'
-    Returns:
-        DataFrame with top recommendations
-    """
-    query_processed = preprocess_text(query)
+        parsed_response = json.loads(json_str)
+        print(f"Parsed Gemini response: {parsed_response}")
+        return parsed_response
+    except Exception as e:
+        print(f"Gemini error: {e}")
+        return {'corrected_query': preprocess_text(query), 'intent': 'general', 'synonyms': []}
 
-    if method == 'tfidf':
-        query_vector = vectorizer.transform([query_processed])
-        similarities = cosine_similarity(query_vector, tfidf_matrix).flatten()
-    elif method == 'embeddings':
-        query_embedding = model.encode([query_processed], convert_to_tensor=False)
-        similarities = cosine_similarity(query_embedding, description_embeddings).flatten()
+# Recommendation function
+def get_recommendations(query, top_n=5):
+    gemini_result = optimize_query_with_gemini(query)
+    corrected_query = gemini_result['corrected_query']
+    intent = gemini_result['intent']
+    synonyms = gemini_result['synonyms']
+
+    if intent == 'specific':
+        search_text = (df['name'] + ' ' + df['name'] + ' ' + df['name'] + ' ' +
+                       df['features'] + ' ' + df['description'] + ' ' + df['category'])
+    elif intent == 'category':
+        search_text = (df['category'] + ' ' + df['category'] + ' ' + df['category'] + ' ' +
+                       df['name'] + ' ' + df['description'] + ' ' + df['features'])
     else:
-        raise ValueError("Method must be 'tfidf' or 'embeddings'")
+        search_text = df['combined_text']
 
-    df['similarity'] = similarities
-    recommendations = df.sort_values(by=['similarity', 'rating'], ascending=[False, False]).head(top_n)
-    return recommendations[['service', 'vendor', 'rating', 'similarity']]
+    search_text = search_text.apply(preprocess_text)
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix_adjusted = vectorizer.fit_transform(search_text)
 
-# ---- User Input Loop ----
-def get_user_recommendations():
-    while True:
-        # Get user query
-        query = input("\nEnter a service to search for (e.g., 'haircut', 'facial') or 'quit' to exit: ").strip()
-        
-        # Check if user wants to exit
-        if query.lower() == 'quit':
-            print("Exiting recommendation system.")
-            break
-        
-        if not query:
-            print("Please enter a valid query.")
-            continue
+    expanded_query = corrected_query
+    if synonyms:
+        for syn_list in synonyms:
+            expanded_query += ' ' + ' '.join(syn_list)
 
-        # Get recommendations
-        print("\nRecommendations using TF-IDF:")
-        tfidf_recommendations = recommend_services(query, top_n=2, method='tfidf')
-        print(tfidf_recommendations)
+    print(f"Expanded query: {expanded_query}")
+    query_vec = vectorizer.transform([preprocess_text(expanded_query)])
+    similarities = cosine_similarity(query_vec, tfidf_matrix_adjusted).flatten()
+    top_indices = similarities.argsort()[-top_n:][::-1]
 
-        print("\nRecommendations using Embeddings:")
-        embedding_recommendations = recommend_services(query, top_n=10, method='embeddings')
-        print(embedding_recommendations)
-
-# ---- Main Execution ----
-if __name__ == "__main__":
-    # Run the user input loop
-    get_user_recommendations()
-
-    # Optional: Save models for deployment (uncomment if needed)
-    # import pickle
-    # pickle.dump(vectorizer, open('tfidf_vectorizer.pkl', 'wb'))
-    # pickle.dump(tfidf_matrix, open('tfidf_matrix.pkl', 'wb'))
-    # pickle.dump(model, open('embedding_model.pkl', 'wb'))
-    # np.save('description_embeddings.npy', description_embeddings)
-
-    # ---- Data Pipeline Simulation (uncomment if you want to add new data) ----
-    # def update_database(new_data, vectorizer, model):
-    #     new_df = pd.DataFrame(new_data)
-    #     new_df['description'] = new_df['service'] + ' ' + new_df['vendor']
-    #     new_df['description_processed'] = new_df['description'].apply(preprocess_text)
-    #     global tfidf_matrix, df, description_embeddings
-    #     df = pd.concat([df, new_df], ignore_index=True)
-    #     tfidf_matrix = vectorizer.fit_transform(df['description_processed'])
-    #     description_embeddings = model.encode(df['description_processed'].tolist(), convert_to_tensor=False)
+    top_score = similarities[top_indices[0]]
+    if top_score < 0.1:
+        print(f"Did you mean something like '{corrected_query}'? Try refining your query.")
     
-    # new_data = {'service': ['Nail Salon'], 'vendor': ['Glow'], 'rating': [4.5]}
-    # update_database(new_data, vectorizer, model)
-    # print("\nUpdated Recommendations after adding new data:")
-    # print(recommend_services("nail salon", top_n=1, method='embeddings'))
+    results = df.iloc[top_indices][['name', 'description', 'price']]
+    return results
+
+# User input loop
+print("Welcome to the Product Search System!")
+print("Enter a query to search for products, or type 'exit' to quit.")
+
+while True:
+    query = input("Enter your query (or 'exit' to quit): ").strip()
+    
+    if query.lower() == 'exit':
+        print("Thank you for using the Product Search System. Goodbye!")
+        break
+    
+    if not query:
+        print("Please enter a query.")
+        continue
+    
+    print("Processing your query...")
+    try:
+        recommendations = get_recommendations(query)
+        if recommendations.empty:
+            print("No products found. Try a different query.")
+        else:
+            print(recommendations)
+    except Exception as e:
+        print(f"An error occurred: {e}. Please try again.")
