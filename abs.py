@@ -12,7 +12,7 @@ from fuzzywuzzy import process
 nltk.download('stopwords')
 
 # Configure Google Generative AI API
-genai.configure(api_key='AIzaSyDLZa70GOCW-aqmzFUDgX90kkQBTl0EuE0')
+genai.configure(api_key='your_api_key')
 
 # Spa-specific stopwords to add
 spa_stopwords = {'spa', 'salon', 'service', 'services', 'treatment', 'treatments'}
