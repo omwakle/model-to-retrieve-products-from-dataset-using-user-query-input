@@ -12,7 +12,7 @@ import nltk
 nltk.download('stopwords')
 
 # Configure Google Generative AI API
-genai.configure(api_key='your-gemini-api-key')
+genai.configure(api_key='AIzaSyDLZa70GOCW-aqmzFUDgX90kkQBTl0EuE0')
 
 # Load CSV
 df = pd.read_csv('products.csv')
@@ -67,7 +67,7 @@ def optimize_query_with_gemini(query):
         return {'corrected_query': preprocess_text(query), 'intent': 'general', 'synonyms': []}
 
 # Recommendation function
-def get_recommendations(query, top_n=5):
+def get_recommendations(query, top_n=10):
     gemini_result = optimize_query_with_gemini(query)
     corrected_query = gemini_result['corrected_query']
     intent = gemini_result['intent']
