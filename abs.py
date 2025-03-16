@@ -9,7 +9,7 @@ from fuzzywuzzy import process
 import concurrent.futures
 
 # Configure Google Generative AI API
-genai.configure(api_key='AIzaSyBJ3yrDXPB2OTX26guc2Jx_9vGlpl64iyw')
+genai.configure(api_key='your_api_key')
 
 # Load and preprocess the data only once at startup
 @functools.lru_cache(maxsize=1)
