@@ -1,4 +1,4 @@
-# Enhanced Spa Service Search System
+# Enhanced Search System
 
 ## Overview
 
