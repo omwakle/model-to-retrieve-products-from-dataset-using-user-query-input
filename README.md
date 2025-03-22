@@ -1,32 +1,30 @@
-# Enhanced Search System
+# Service Retriever API
 
-## Overview
+A Flask-based API for intelligent service search using fuzzy matching, semantic search, and natural language processing. This application helps users find services based on text queries, handling misspellings, related terms, and gender preferences.
 
-This system is designed to help users find spa services based on natural language queries. It uses advanced text processing and machine learning techniques to match user queries with available spa services, even when the query doesn't exactly match service names or categories.
+## Features
 
-Key features:
-- Multi-service query handling (e.g., "massage and facial")
-- Fuzzy matching for partial or misspelled queries
-- Gender-specific service filtering
-- AI-powered query enhancement (optional)
-- High-performance search with optimized algorithms
+- **Fuzzy Search**: Find services that approximately match user queries
+- **Semantic Search**: Match services based on meaning, not just keywords
+- **Spell Correction**: Automatically correct spelling errors in search queries
+- **Gender Preference Detection**: Filter results based on detected gender preferences
+- **Multiple Matching Strategies**: Uses various scoring algorithms for optimal results
+- **RESTful API**: Simple HTTP endpoints for integration with any frontend
+
+## Requirements
+
+- Python 3.8+
+- Dependencies listed in `requirements.txt`
 
 ## Installation
 
-### Prerequisites
-
-- Python 3.7 or higher
-- pip package manager
-
-### Setup
-
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/spa-service-search.git
-   cd spa-service-search
+   git clone https://github.com/yourusername/service-retriever.git
+   cd service-retriever
    ```
 
-2. Create a virtual environment (recommended):
+2. Create a virtual environment (optional but recommended):
    ```
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -37,130 +35,129 @@ Key features:
    pip install -r requirements.txt
    ```
 
-4. Download NLTK data (required for sentence tokenization):
-   ```python
-   import nltk
-   nltk.download('punkt')
-   ```
-
-5. Set up your Google Generative AI API key (if using AI-powered query enhancement):
-   - Create a `.env` file with your API key:
+4. Prepare your data:
+   - Place your service data in a CSV file named `newproduct.csv`
+   - The CSV must contain at least a `Name` column
+   - For example:
      ```
-     GOOGLE_API_KEY=your_api_key_here
+     Name,Category,Price
+     Women's Haircut,Hair,50
+     Men's Haircut,Hair,35
+     Manicure,Nails,25
      ```
-   - Or set the environment variable:
-     ```
-     export GOOGLE_API_KEY=your_api_key_here  # On Windows: set GOOGLE_API_KEY=your_api_key_here
-     ```
-
-6. Prepare your spa service data:
-   - Ensure your data is in a CSV file named `newproduct.csv`
-   - Required columns: `Name`, `Category`
-   - Optional columns: `Description`
+   - If no file is provided, an example dataset will be created automatically
 
 ## Usage
 
-### Running the application
+### Starting the Server
 
-Execute the main script to start the interactive search console:
-
+Run the application:
 ```
-python spa_search.py
+python app.py
 ```
 
-### Query examples
+The server will start on http://localhost:5000 by default.
 
-- Single service query: `"hot stone massage"`
-- Multiple service query: `"facial and pedicure"`
-- Gender-specific query: `"men's haircut"`
-- Category-based query: `"all massage services"`
-- Specific service with gender: `"women's body massage"`
+### API Endpoints
 
-### Commands
+#### 1. Search Services
+```
+GET /api/search?q={query}&limit={limit}
+```
 
-- `exit`: Quit the application
-- `toggle`: Switch AI query enhancement on/off
+Parameters:
+- `q` (required): Search query
+- `limit` (optional): Maximum number of results to return (default: 5)
+- `type` (optional): Search type - 'fuzzy', 'semantic', or 'hybrid' (default: 'hybrid')
+
+Example Request:
+```
+GET /api/search?q=women%20haircut&limit=3
+```
+
+Example Response:
+```json
+{
+  "status": "success",
+  "query": "women haircut",
+  "search_type": "hybrid",
+  "results_count": 2,
+  "results": [
+    {
+      "name": "Women's Haircut",
+      "score": 95.3,
+      "category": "Hair",
+      "price": 50
+    },
+    {
+      "name": "Hair Styling",
+      "score": 62.7,
+      "category": "Hair",
+      "price": 40
+    }
+  ]
+}
+```
+
+#### 2. Health Check
+```
+GET /api/health
+```
+
+Example Response:
+```json
+{
+  "status": "ok",
+  "service": "Service Retrieval API",
+  "data_loaded": true,
+  "services_count": 24,
+  "semantic_search_enabled": true
+}
+```
 
 ## How It Works
 
-1. **Query Processing:**
-   - Segments multi-service queries into individual requests
-   - Detects gender preferences
-   - Identifies query intent (specific service, category, or general)
-   - Expands queries with synonyms
+1. **Initialization**: The application loads service data from the CSV file and prepares various search mechanisms.
 
-2. **Search Algorithm:**
-   - Uses TF-IDF vectorization to convert text to numerical form
-   - Calculates cosine similarity between query and services
-   - Applies fuzzy matching as a fallback for low-confidence matches
-   - Filters results based on gender if specified
+2. **Query Processing**:
+   - Spelling correction using PySpellChecker
+   - Gender preference detection using keyword analysis
+   
+3. **Search Process**:
+   - Semantic search using sentence embeddings (if enabled)
+   - Multiple fuzzy matching strategies (token set ratio, partial ratio, etc.)
+   - Results aggregation and scoring
+   - Optional gender-based filtering
+   - Fallback to word-by-word matching for difficult queries
 
-3. **Result Presentation:**
-   - Groups results by query segment for multi-service queries
-   - Sorts by relevance score
-   - Displays name, category, gender, and relevance
+4. **Result Formatting**:
+   - Service details are retrieved from the original dataset
+   - Results are ranked by similarity score
+
+## Deployment
+
+For production deployment:
+
+1. Set `debug=False` in the `app.run()` call
+2. Use Gunicorn or a similar WSGI server:
+   ```
+   gunicorn -w 4 app:app
+   ```
+3. Consider using environment variables for configuration
 
 ## Customization
 
-### Modifying the stopwords list
+- Modify the `ServiceRetriever` class parameters to tune search behavior
+- Adjust the `score_cutoff` parameter to control match precision
+- Change the semantic model by modifying the `model_name` parameter
+- Add additional fields to your CSV for more detailed service information
 
-Edit the `spa_stopwords` set in the `load_and_process_data()` function to add or remove words that should be ignored during processing.
+## Limitations
 
-### Adjusting similarity thresholds
-
-Modify the threshold values in the `get_recommendations()` function to make the matching more or less strict:
-- Higher values (e.g., 0.2) require closer matches
-- Lower values (e.g., 0.01) allow more distantly related results
-
-### Adding new synonyms
-
-Extend the synonym lists in the `optimize_query()` function to improve matching for specific service types.
-
-## Performance Optimization
-
-The system uses several techniques to maintain high performance:
-- Function caching with `@functools.lru_cache`
-- Vectorized operations with pandas
-- Concurrent processing for data loading
-- Partial sorting for large result sets
-- Pre-computation of TF-IDF matrices
-
-## Troubleshooting
-
-### Common issues
-
-1. **No results found:**
-   - Try more general terms
-   - Check for typos in your query
-   - Try using synonyms or alternative terms
-
-2. **API key errors:**
-   - Verify your Google API key is correct
-   - Use the `toggle` command to disable AI if you don't have a key
-
-3. **Performance issues:**
-   - For large datasets, increase the system's memory allocation
-   - Consider reducing the dataset size or filtering irrelevant entries
-
-### Logs
-
-The system prints error messages to the console. For more detailed logging, you can add:
-
-```python
-import logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-```
+- Semantic search requires significant memory for the embedding model
+- Performance may degrade with very large service catalogs
+- The default spell checker works best with English language queries
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Acknowledgments
-
-- FuzzyWuzzy library for fuzzy string matching
-- Google Generative AI for query enhancement
-- NLTK for natural language processing
+[MIT License](LICENSE)
